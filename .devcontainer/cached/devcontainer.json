@@ -1,0 +1,17 @@
+{
+    "name": "git [static MUSL] builder [ghcr.io cached]",
+    "image": "ghcr.io/thecbah/git.builder/devcontainer:master",
+    "runArgs": [
+        "--cap-add=SYS_ADMIN",
+        "--cap-add=SYS_PTRACE",
+        "--security-opt", "apparmor:unconfined"
+    ],
+    "remoteEnv": {
+        "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
+    },
+    "remoteUser": "vscode",
+    "postCreateCommand": {
+        "submodules": "set -eux;git submodule update --recursive --init --recommend-shallow"
+    },
+    "waitFor": "postCreateCommand"
+}

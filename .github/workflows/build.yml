@@ -1,0 +1,359 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  utils:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        host:
+          - alpine
+          - devcontainer
+          - runner
+    steps:
+    - name: checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: true
+    - name: devcontainer
+      uses: ./.github/workflows/actions/devcontainer
+      if: matrix.host == 'devcontainer'
+      id: devcontainer
+    - name: host images
+      uses: ./.github/workflows/actions/docker
+      if: contains('alpine', matrix.host)
+      with:
+        image: ${{ matrix.host }}
+    - name: setup
+      run: |
+        case "${{ matrix.host }}" in
+        alpine)
+          echo 'EXEC=./with-docker ${{ matrix.host }}' >> $GITHUB_ENV
+          sudo .devcontainer/features/apt-packages/install.sh\
+            autopoint\
+            po4a\
+        ;;
+        devcontainer)
+          echo 'EXEC=${{ steps.devcontainer.outputs.exec }}' >> $GITHUB_ENV
+          ;;
+        runner)
+          sudo .devcontainer/features/apt-packages/install.sh\
+            autopoint\
+            po4a\
+            ;
+        ;;
+        esac
+    - name: build xz
+      run: |
+        echo "::group::autogen"
+        config=''
+        case "${{ matrix.host }}" in
+        alpine)
+          make xz.autogen
+          config='WITH_STATIC=1'
+          ;;
+        *)
+          ${{ env.EXEC }} make xz.autogen
+          ;;
+        esac
+        echo "::group::configure"
+        ${{ env.EXEC }} make xz.configure $config
+        echo "::group::build"
+        ${{ env.EXEC }} make xz.build
+        echo "::group::install"
+        ${{ env.EXEC }} make xz.install
+        echo "::group::test"
+        ${{ env.EXEC }} .local/bin/xz --version
+        case "${{ matrix.host }}" in
+        alpine)
+          file .local/bin/xz
+          .local/bin/xz --version
+          ;;
+        esac
+    - name: package xz
+      run: |
+        set -x
+        ver="$(git -C .modules/xz grep -E 'LZMA_VERSION_[MP].*[0-9]+$' src/liblzma/api/lzma/version.h)"
+        ver="$(echo $ver|sed -E 's/.+MAJOR ([0-9]+).+MINOR ([0-9]+).+PATCH ([0-9]+)$/\1.\2.\3/')"
+        tar="xz-$ver-${{ matrix.host }}.tar"
+        tar -cf $tar --owner=0 --group=0 -C .local .
+        gzip --keep -9 $tar
+        du -sh xz-*
+        rm -rf .local
+    - name: build curl
+      run: |
+        echo "::group::configure"
+        case "${{ matrix.host }}" in
+        alpine)
+          ${{ env.EXEC }} make curl.configure WITH_STATIC=1
+          ;;
+        *)
+          ${{ env.EXEC }} make curl.configure
+          ;;
+        esac
+        echo "::group::build"
+        ${{ env.EXEC }} make curl.build
+        echo "::group::install"
+        ${{ env.EXEC }} make curl.install
+        echo "::group::test"
+        ${{ env.EXEC }} .local/bin/curl --version
+        case "${{ matrix.host }}" in
+        alpine)
+          file .local/bin/curl
+          .local/bin/curl --version
+          ;;
+        esac
+    - name: package curl
+      run: |
+        set -x
+        ver="$(git -C .modules/curl grep -w LIBCURL_VERSION include/curl/curlver.h)"
+        ver="$(echo $ver|sed -E 's/.+([0-9]+.[0-9]+.[0-9]+)-.*/\1/')"
+        tar="curl-$ver-${{ matrix.host }}.tar"
+        tar -cf $tar --owner=0 --group=0 -C .local bin/curl share/man/man1/curl.1
+        gzip --keep -9 $tar
+        du -sh curl-*
+        rm -rf .local
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: utils-${{ matrix.host }}
+        path: |
+          *-${{ matrix.host }}.tar.gz
+  git:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        host:
+          - alpine
+        git:
+          - 2.10.5
+          - 2.11.4
+          - 2.12.5
+          - 2.13.7
+          - 2.14.6
+          - 2.15.4
+          - 2.16.6
+          - 2.17.6
+          - 2.18.5
+          - 2.19.6
+          - 2.20.5
+          - 2.21.4
+          - 2.22.5
+          - 2.23.4
+          - 2.24.4
+          - 2.25.5
+          - 2.26.3
+          - 2.27.1
+          - 2.28.1
+          - 2.29.3
+          - 2.30.8
+          - 2.31.7
+          - 2.32.6
+          - 2.33.6
+          - 2.34.7
+          - 2.35.7
+          - 2.36.5
+          - 2.37.6
+          - 2.38.4
+          - 2.39.2
+        include:
+          - { host: alpine, git: 2.21.4 }
+          - { host: devcontainer, git: 2.21.4 }
+          - { host: runner, git: 2.21.4 }
+    steps:
+    - name: checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: true
+    - name: devcontainer
+      uses: ./.github/workflows/actions/devcontainer
+      if: matrix.host == 'devcontainer'
+      id: devcontainer
+    - name: host images
+      uses: ./.github/workflows/actions/docker
+      if: contains('alpine', matrix.host)
+      with:
+        image: ${{ matrix.host }}
+    - name: setup
+      run: |
+        case "${{ matrix.host }}" in
+        alpine)
+          echo 'EXEC=./with-docker ${{ matrix.host }}' >> $GITHUB_ENV
+          ;;
+        devcontainer)
+          echo 'EXEC=${{ steps.devcontainer.outputs.exec }}' >> $GITHUB_ENV
+          ;;
+        runner)
+          sudo .devcontainer/features/apt-packages/install.sh\
+           asciidoc\
+           docbook-xsl-ns\
+           gettext\
+           libcurl4-openssl-dev\
+           xmlto\
+           ;
+          ;;
+        esac
+    - name: repo
+      run: |
+        make repo GIT_VER=${{ matrix.git }}
+    - name: configure
+      run: |
+        case "${{ matrix.host }}" in
+        alpine)
+          echo "::group::curl"
+          ${{ env.EXEC }} make curl.configure curl.build curl.install
+          echo "::group::git"
+          ${{ env.EXEC }} make git.configure WITH_STATIC=1
+          ;;
+        *)
+          ${{ env.EXEC }} make git.configure
+          ;;
+        esac
+    - name: build
+      run: |
+        ${{ env.EXEC }} make git.build
+    - name: doc
+      run: |
+        ${{ env.EXEC }} make git.doc
+    - name: test
+      run: |
+        ${{ env.EXEC }} make git.test
+        case "${{ matrix.host }}" in
+        alpine)
+          make git.test
+          ;;
+        esac
+    - name: install
+      run: |
+        echo "::group::install"
+        case "${{ matrix.host }}" in
+        alpine)
+          make git.install.${{ matrix.host }}
+          ;;
+        *)
+          ${{ env.EXEC }} make git.install.sudo
+          ;;
+        esac
+        case "${{ matrix.host }}" in
+        devcontainer)
+          ;;
+        *)
+          echo "::group::test"
+          make git.test.installed.sudo
+          ;;
+        esac
+        echo "::group::install"
+    - name: package
+      run: |
+        set -x
+        tar='git-${{ matrix.git }}-${{ matrix.host }}.tar'
+        tar -cf $tar --owner=0 --group=0 -C .install .
+        case ${{ github.ref }} in
+        refs/tags/*)
+          compress='-9'
+          ;;
+        *)
+          compress='-7'
+          ;;
+        esac
+        xz --keep --compress $compress --threads 0 $tar
+        du -sh git-*
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: git-${{ matrix.git }}-${{ matrix.host }}
+        path: |
+          git-${{ matrix.git }}-${{ matrix.host }}.tar.xz
+  test:
+    needs: [git,utils]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        host:
+          - centos:5.11
+          - centos:6.10
+          - centos:7.9.2009
+          - centos:latest
+          - debian:11.6-slim
+          - debian:7.11-slim
+          - debian:8.11-slim
+          - debian:9.13-slim
+          - debian:latest
+          - runner
+          - ubuntu:10.04
+          - ubuntu:12.04
+          - ubuntu:14.04
+          - ubuntu:16.04
+          - ubuntu:18.10
+          - ubuntu:20.04
+          - ubuntu:latest
+    steps:
+    - name: checkout
+      uses: actions/checkout@v3
+    - uses: actions/download-artifact@v3
+      with:
+        path: .artifacts
+    - name: files
+      run: |
+        find .artifacts -type f
+    - name: test runner
+      if: matrix.host == 'runner'
+      run: |
+        mkdir -p test.runner
+        ./with-bind_mount.sh $(readlink -f test.runner) /usr/local\
+          .github/workflows/test-release.sh .artifacts runner
+    - name: test alpine
+      run: |
+        set -x
+        this="$(readlink -f .)"
+        mkdir -p test.alpine
+        case "${{ matrix.host }}" in
+        runner)
+          ./with-bind_mount.sh $this/test.alpine /usr/local\
+            .github/workflows/test-release.sh .artifacts alpine
+          ;;
+        *)
+          mkdir .local
+          for util in curl xz; do
+            tar=$(find .artifacts/ -type f -name "$util-*"|grep alpine)
+            tar -xf $tar -C .local
+          done
+          docker run -i --rm --user $(id -u):$(id -g) -w $this\
+           -v $this/test.alpine:/usr/local\
+           -v $this:$this\
+           -v /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro\
+            ${{ matrix.host }} env PATH=$this/.local/bin:/bin:/usr/bin:/usr/local/bin\
+              .github/workflows/test-release.sh .artifacts alpine
+          ;;
+        esac
+  release:
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/download-artifact@v3
+    - name: filter
+      run: |
+        set -x
+        echo "::group::files"
+        find . -type f
+        echo "::endgroup::"
+        mkdir release
+        for f in */*-alpine* ; do
+          name=$(basename $f)
+          name=$(echo $name|sed 's/-alpine//')
+          mv -v $f release/$name
+        done
+    - name: upload release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: 'release/*'

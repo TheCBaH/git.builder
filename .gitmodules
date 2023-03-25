@@ -1,0 +1,6 @@
+[submodule ".modules/curl"]
+	path = .modules/curl
+	url = https://github.com/curl/curl.git
+[submodule ".modules/xz"]
+	path = .modules/xz
+	url = https://github.com/xz-mirror/xz.git

@@ -1,0 +1,22 @@
+ARG OS_VER=latest
+FROM alpine:${OS_VER}
+RUN set -eux;\
+    apk --no-cache add\
+ asciidoc\
+ autoconf\
+ automake\
+ bash\
+ expat-dev\
+ expat-static\
+ gcc\
+ gettext\
+ libc-dev\
+ libtool\
+ make\
+ openssl-dev\
+ openssl-libs-static\
+ xmlto\
+ zlib-dev\
+ zlib-static\
+ ;\
+    echo DONE
