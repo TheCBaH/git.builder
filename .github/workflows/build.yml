@@ -118,12 +118,58 @@ jobs:
         gzip --keep -9 $tar
         du -sh curl-*
         rm -rf .local
+    - name: build openssh
+      run: |
+        echo "::group::configure"
+        case "${{ matrix.host }}" in
+        alpine)
+          ${{ env.EXEC }} make openssh.autogen openssh.configure WITH_STATIC=1
+          ;;
+        *)
+          ${{ env.EXEC }} make openssh.autogen openssh.configure
+          ;;
+        esac
+        echo "::group::build"
+        ${{ env.EXEC }} make openssh.build
+        echo "::group::install"
+        ${{ env.EXEC }} make openssh.install
+        echo "::group::test"
+        ssh=".local/usr/local/bin/ssh"
+        case "${{ matrix.host }}" in
+        alpine)
+          file $ssh
+          $ssh -V
+          ;;
+        *)
+          ${{ env.EXEC }} $ssh -V
+          ;;
+        esac
+    - name: package openssh
+      run: |
+        set -x
+        ver="$(git -C .modules/openssh-portable/ grep 'define SSH_VERSION' version.h)"
+        ver="$(echo $ver|sed -E 's/.+OpenSSH_([0-9]+).([0-9]+).+/\1.\2/')"
+        tar="openssh-$ver-${{ matrix.host }}.tar"
+        files=$(cd .local/usr/local;echo *)
+        tar -cf $tar --owner=0 --group=0 -C .local/usr/local $files
+        case ${{ github.ref }} in
+        refs/tags/*)
+          compress='-9'
+          ;;
+        *)
+          compress='-7'
+          ;;
+        esac
+        xz --keep --compress $compress --threads 0 $tar
+        du -sh openssh-*
+        rm -rf .local
     - name: Upload artifact
       uses: actions/upload-artifact@v3
       with:
         name: utils-${{ matrix.host }}
         path: |
           *-${{ matrix.host }}.tar.gz
+          *-${{ matrix.host }}.tar.xz
   git:
     runs-on: ubuntu-latest
     strategy:
@@ -321,7 +367,7 @@ jobs:
           ;;
         *)
           mkdir .local
-          for util in curl xz; do
+          for util in curl openssh xz; do
             tar=$(find .artifacts/ -type f -name "$util-*"|grep alpine)
             tar -xf $tar -C .local
           done

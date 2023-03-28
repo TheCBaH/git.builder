@@ -133,3 +133,19 @@ xz.build:
 
 xz.install:
 	${MAKE} -C .modules/xz install-strip
+
+xz: $(addprefix xz., autogen configure build install)
+
+openssh.autogen:
+	cd .modules/openssh-portable && autoreconf
+
+openssh.configure:
+	cd .modules/openssh-portable && ./configure
+
+openssh.build:
+	${MAKE} -C .modules/openssh-portable -j${CPUS}
+
+openssh.install:
+	${MAKE} -C .modules/openssh-portable install DESTDIR=${CURDIR}/.local
+
+openssh: $(addprefix openssh., autogen configure build install)
